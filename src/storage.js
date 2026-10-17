@@ -27,6 +27,10 @@ function transactionDone(tx) {
     tx.onerror = () => reject(tx.error || new Error('Local storage error.'));
   });
 }
+function writeTransaction(db, stores) {
+  try { return db.transaction(stores, 'readwrite', { durability: 'strict' }); }
+  catch (error) { if (error instanceof TypeError) return db.transaction(stores, 'readwrite'); throw error; }
+}
 export async function readState(db) {
   const tx = db.transaction('main', 'readonly');
   const request = tx.objectStore('main').get('state');
@@ -40,13 +44,31 @@ export async function readState(db) {
 }
 export async function writeState(db, state) {
   validateState(state);
-  const tx = db.transaction('main', 'readwrite');
+  const tx = writeTransaction(db, 'main');
   tx.objectStore('main').put(state, 'state');
   await transactionDone(tx);
 }
+// Read and change the latest saved state in one serialized transaction across tabs.
+export async function updateState(db, change) {
+  const tx = writeTransaction(db, 'main');
+  const done = transactionDone(tx);
+  const store = tx.objectStore('main');
+  let next, failure;
+  const request = store.get('state');
+  request.onsuccess = () => {
+    try {
+      validateState(request.result);
+      next = change(request.result);
+      validateState(next);
+      store.put(next, 'state');
+    } catch (error) { failure = error; tx.abort(); }
+  };
+  try { await done; } catch (error) { throw failure || error; }
+  return next;
+}
 export async function installInitialState(db, state) {
   validateState(state);
-  const tx = db.transaction('main', 'readwrite');
+  const tx = writeTransaction(db, 'main');
   const store = tx.objectStore('main');
   const request = store.get('state');
   const existing = await new Promise((resolve, reject) => {
@@ -59,11 +81,24 @@ export async function installInitialState(db, state) {
 }
 export async function importWithSafety(db, nextState, safetyBackup, reason) {
   validateState(nextState);
-  const tx = db.transaction(['main', 'safety'], 'readwrite');
+  const tx = writeTransaction(db, ['main', 'safety']);
+  const done = transactionDone(tx);
   const snapshot = { id: `${new Date().toISOString()}-${crypto.randomUUID()}`, createdAt: new Date().toISOString(), reason, backup: safetyBackup };
-  tx.objectStore('safety').put(snapshot);
-  tx.objectStore('main').put(nextState, 'state');
-  await transactionDone(tx);
+  let stale = false;
+  const request = tx.objectStore('main').get('state');
+  request.onsuccess = () => {
+    if (JSON.stringify(request.result) !== JSON.stringify(safetyBackup.state)) { stale = true; tx.abort(); return; }
+    tx.objectStore('safety').put(snapshot);
+    tx.objectStore('main').put(nextState, 'state');
+  };
+  try { await done; } catch (error) {
+    if (stale) {
+      const conflict = new Error('Progress changed in another tab. Review the updated totals, then try again. No progress was replaced.');
+      conflict.code = 'STALE_STATE';
+      throw conflict;
+    }
+    throw error;
+  }
   return snapshot.id;
 }
 export async function listSafetySnapshots(db) {

@@ -75,3 +75,13 @@ There is no chapter column or chapter heading structure in the workbook, so lect
 Back up progress before publishing an update. Keep the same HTTPS URL and course/lecture IDs. A new service worker cache is created by the build. The app does not overwrite existing IndexedDB data with a changed seed, so edits to the course dataset require a planned data migration or a reviewed backup replacement.
 
 The clean-start update removes only inherited workbook checkmarks on existing installs, saves a safety snapshot first, and keeps all explicit user changes. Default unchecked records use an epoch timestamp so they cannot override real study progress during merges. A deliberately imported or restored backup retains its recorded statuses.
+
+Updates download fresh assets, then refresh open tracker tabs. Current versions wait for pending saves and backup previews before reloading. Older cached versions are also refreshed automatically when the new worker installs. The build includes the worker itself in its version hash. Reopen the app online to receive updates; offline use keeps the installed version.
+
+## Saving and reliability
+
+Progress has no expiry date. Each checkbox change reads and updates the latest IndexedDB record in one transaction, with strict disk durability requested where supported. Rapid clicks are queued. Open tabs notify each other after saves; an older tab cannot replace newer progress during a backup import. Failed saves show an error and restore the displayed checkbox to its saved state.
+
+This does not guarantee permanent storage: clearing browser/app data, losing the device, disk failure, or browser storage eviction can remove local records. Persistent-storage permission is requested where available, but the browser decides whether to grant it. Keep periodic JSON backups outside the app, especially before browser/device cleanup. A safety snapshot in the same browser is not a substitute for an exported backup.
+
+`npm run test:update` tests an actual cached original release upgrading to the current version, including a profile with manually recorded progress. It requires this repository's Git history plus the same Playwright/Chrome setup as the browser tests. See `TEST_RESULTS.md` for tested behavior and limits.

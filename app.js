@@ -1,11 +1,28 @@
 import { applyManualStart, createInitialState, durationLabel, importPreview, isCompleted, mergeStates, percent, setLectureCompletion, stats, validateState } from './core.js';
-import { openDatabase, readState, writeState, installInitialState, importWithSafety, listSafetySnapshots, requestPersistentStorage } from './storage.js';
+import { openDatabase, readState, updateState, installInitialState, importWithSafety, listSafetySnapshots, requestPersistentStorage } from './storage.js';
 import { createBackup, downloadBackup, parseBackup } from './backup.js';
 
 const app = document.getElementById('app');
 const fileInput = document.getElementById('backup-file');
 const toastNode = document.getElementById('toast');
 let db, state, pendingBackup = null, safetySnapshots = [], busy = false, installPrompt = null;
+let saveQueue = Promise.resolve(), pendingSaves = 0, refreshTimer;
+const changes = typeof BroadcastChannel === 'function' ? new BroadcastChannel('prepladder-progress') : null;
+function announceSave() { changes?.postMessage('saved'); }
+async function refreshSavedState() {
+  clearTimeout(refreshTimer);
+  if (!db) return;
+  if (busy) { refreshTimer = setTimeout(refreshSavedState, 100); return; }
+  const beforeRead = state;
+  try {
+    const latest = await readState(db);
+    const snapshots = await listSafetySnapshots(db);
+    if (busy || state !== beforeRead) { refreshTimer = setTimeout(refreshSavedState, 100); return; }
+    state = latest; safetySnapshots = snapshots; render();
+  } catch (error) { notify(`Could not refresh saved progress: ${error.message}`, true); }
+}
+if (changes) changes.onmessage = () => refreshSavedState();
+window.addEventListener('focus', refreshSavedState);
 let subjectSort = 'source', lectureFilter = 'all', search = '';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num = n => n.toLocaleString('en-US');
@@ -117,22 +134,25 @@ function render() {
   document.getElementById('nav-backup').classList.toggle('active', r.page === 'backup');
   document.getElementById('connection-status').textContent = navigator.onLine ? '● Saved locally' : '● Offline ready';
 }
-async function commit(next) {
-  if (busy) return;
+async function commit(change) {
+  pendingSaves++;
   busy = true;
-  try { await writeState(db, next); state = next; busy = false; render(); }
-  catch (error) { busy = false; notify(`Save failed: ${error.message}`, true); render(); }
+  const operation = saveQueue.then(() => updateState(db, change));
+  saveQueue = operation.catch(() => {});
+  try { state = await operation; announceSave(); }
+  catch (error) { notify(`Save failed: ${error.message}`, true); }
+  finally { pendingSaves--; busy = pendingSaves > 0; if (!busy) render(); }
 }
 async function exportCurrent() {
   if (busy) return;
   busy = true;
   try {
     const at = new Date().toISOString();
-    const next = { ...state, lastBackupAt: at };
+    const next = { ...await readState(db), lastBackupAt: at };
     const backup = await createBackup(next, at);
     downloadBackup(backup);
-    await writeState(db, next);
-    state = next; render(); notify('Backup downloaded. Keep it in a safe place.');
+    state = await updateState(db, current => ({ ...current, lastBackupAt: at }));
+    announceSave(); render(); notify('Backup downloaded. Keep it in a safe place.');
   } catch (error) { notify(`Backup failed: ${error.message}`, true); }
   finally { busy = false; }
 }
@@ -147,10 +167,11 @@ async function importSelected(mode) {
     downloadBackup(safety, 'PrepLadder_Safety_Before_Import');
     await importWithSafety(db, next, safety, mode === 'merge' ? 'Before merge' : 'Before replace');
     state = next;
+    announceSave();
     pendingBackup = null;
     safetySnapshots = await listSafetySnapshots(db);
     render(); notify(`${mode === 'merge' ? 'Merged' : 'Restored'} backup successfully.`);
-  } catch (error) { notify(`Import stopped: ${error.message}`, true); }
+  } catch (error) { if (error.code === 'STALE_STATE') refreshTimer = setTimeout(refreshSavedState, 0); notify(`Import stopped: ${error.message}`, true); }
   finally { busy = false; }
 }
 async function restoreSafety(id) {
@@ -162,9 +183,9 @@ async function restoreSafety(id) {
     const safety = await createBackup(state);
     downloadBackup(safety, 'PrepLadder_Safety_Before_Restore');
     await importWithSafety(db, restored, safety, 'Before safety restore');
-    state = restored; safetySnapshots = await listSafetySnapshots(db);
+    state = restored; announceSave(); safetySnapshots = await listSafetySnapshots(db);
     render(); notify('Safety snapshot restored.');
-  } catch (error) { notify(`Restore stopped: ${error.message}`, true); }
+  } catch (error) { if (error.code === 'STALE_STATE') refreshTimer = setTimeout(refreshSavedState, 0); notify(`Restore stopped: ${error.message}`, true); }
   finally { busy = false; }
 }
 app.addEventListener('click', async event => {
@@ -183,15 +204,15 @@ app.addEventListener('click', async event => {
 app.addEventListener('change', async event => {
   const target = event.target;
   if (target.matches('.lecture-check')) {
-    if (busy) { target.checked = !target.checked; return; }
-    const next = setLectureCompletion(state, target.dataset.lectureId, target.checked);
+    if (busy && !pendingSaves) { target.checked = !target.checked; return; }
+    const lectureId = target.dataset.lectureId, completed = target.checked;
     target.disabled = true;
-    await commit(next);
+    await commit(current => setLectureCompletion(current, lectureId, completed));
   } else if (target.id === 'subject-sort') { subjectSort = target.value; render(); }
   else if (target.id === 'daily-goal') {
     const goal = Number(target.value);
     if (!Number.isFinite(goal) || goal < 0.25 || goal > 24) { notify('Choose a daily goal between 0.25 and 24 hours.', true); render(); return; }
-    await commit({ ...state, settings: { ...state.settings, dailyGoalHours: goal } });
+    await commit(current => ({ ...current, settings: { ...current.settings, dailyGoalHours: goal } }));
   }
 });
 app.addEventListener('input', event => {
@@ -215,7 +236,7 @@ fileInput.addEventListener('change', async () => {
 });
 document.getElementById('theme-toggle').addEventListener('click', async () => {
   if (!state || busy) return;
-  await commit({ ...state, settings: { ...state.settings, theme: state.settings.theme === 'dark' ? 'light' : 'dark' } });
+  await commit(current => ({ ...current, settings: { ...current.settings, theme: current.settings.theme === 'dark' ? 'light' : 'dark' } }));
 });
 window.addEventListener('hashchange', () => { search = ''; lectureFilter = 'all'; if (state) render(); window.scrollTo(0,0); });
 window.addEventListener('online', () => state && render());
@@ -230,6 +251,21 @@ installButton.addEventListener('click', async () => {
 });
 window.addEventListener('appinstalled', () => { installPrompt = null; installButton.hidden = true; });
 
+let updateRequested = false;
+function reloadWhenSaved() {
+  if (busy || pendingBackup || !state) { setTimeout(reloadWhenSaved, 250); return; }
+  location.reload();
+}
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type !== 'TRACKER_UPDATE_READY') return;
+    event.ports[0]?.postMessage('received');
+    if (updateRequested) return;
+    updateRequested = true;
+    reloadWhenSaved();
+  });
+}
+
 async function start() {
   try {
     const response = await fetch('./seed.json');
@@ -238,15 +274,26 @@ async function start() {
     db = await openDatabase();
     state = await readState(db);
     if (!state) state = await installInitialState(db, createInitialState(seed));
-    const manualState = applyManualStart(state);
-    if (manualState !== state) {
-      await importWithSafety(db, manualState, await createBackup(state), 'Before removing preset workbook checkmarks');
-      state = manualState;
+    while (!state.manualStartApplied) {
+      const manualState = applyManualStart(state);
+      try {
+        await importWithSafety(db, manualState, await createBackup(state), 'Before removing preset workbook checkmarks');
+        state = manualState; announceSave();
+      } catch (error) {
+        if (error.code !== 'STALE_STATE') throw error;
+        state = await readState(db);
+      }
     }
     safetySnapshots = await listSafetySnapshots(db);
     render();
     requestPersistentStorage().catch(() => {});
-    if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('./sw.js').catch(error => notify(`Offline installation failed: ${error.message}`, true));
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => {
+        const checkUpdate = () => { if (navigator.onLine) registration.update().catch(() => {}); };
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+        window.addEventListener('online', checkUpdate);
+      }).catch(error => notify(`Offline installation failed: ${error.message}`, true));
+    }
   } catch (error) {
     app.innerHTML = `<div class="fatal"><h1>Your saved progress was not changed</h1><p>${escape(error.message)}</p><p>Reload after checking browser storage. If you have a backup, keep it safe.</p></div>`;
   }

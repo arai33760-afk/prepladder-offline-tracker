@@ -145,16 +145,72 @@ try {
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);
     assert.equal(overflow,false,`Horizontal overflow on ${destination}`);
   }
+  await page.goto(url+'#home');
+  await page.locator('.subject-card').first().click();
+  const subjectUrl = page.url();
+  const other = await context.newPage();
+  await other.goto(subjectUrl);
+  await other.locator('.lecture-check').first().waitFor();
+  await Promise.all([page.locator('.lecture-check').nth(0).check(), other.locator('.lecture-check').nth(1).check()]);
+  for (const tab of [page, other]) {
+    await tab.waitForFunction(() => [...document.querySelectorAll('.lecture-check')].slice(0,2).every(el => el.checked && !el.disabled));
+  }
+  await other.close();
+  // Several clicks in one event-loop turn must all be committed.
+  await page.evaluate(() => [...document.querySelectorAll('.lecture-check')].slice(2,5).forEach(el => el.click()));
+  await page.waitForFunction(() => [...document.querySelectorAll('.lecture-check')].slice(0,5).every(el => el.checked && !el.disabled));
+  // A storage failure must roll back the checkbox and leave durable data intact.
+  await page.evaluate(() => {
+    const original = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function(...args) {
+      if (args[1] === 'readwrite') {
+        IDBDatabase.prototype.transaction = original;
+        throw new DOMException('Simulated full storage', 'QuotaExceededError');
+      }
+      return original.apply(this,args);
+    };
+  });
+  await page.evaluate(() => document.querySelectorAll('.lecture-check')[5].click());
+  await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Save failed'));
+  assert.equal(await page.locator('.lecture-check').nth(5).isChecked(),false);
+  const integrity = await page.evaluate(async () => {
+    const storage = await import('./storage.js');
+    const core = await import('./core.js');
+    const { createBackup } = await import('./backup.js');
+    const db = await storage.openDatabase();
+    const before = await storage.readState(db);
+    const safety = await createBackup(before);
+    const untouched = before.lectures.find(l => !core.isCompleted(l,before.progress));
+    await storage.updateState(db, current => core.setLectureCompletion(current,untouched.id,true));
+    let conflict;
+    try { await storage.importWithSafety(db,before,safety,'Stale-tab test'); } catch(error) { conflict=error.code; }
+    const result={ before:core.stats(before).completedLectures, after:core.stats(await storage.readState(db)).completedLectures, conflict };
+    db.close();
+    return result;
+  });
+  assert.deepEqual(integrity,{before:5,after:6,conflict:'STALE_STATE'});
+  await page.reload();
+  await page.locator('.lecture-check').first().waitFor();
+  const durableChecks = await page.locator('.lecture-check:checked').count();
+  assert.equal(durableChecks,6);
   await context.close(); context=null;
   context = await chromium.launchPersistentContext(profile,{headless:true,executablePath:process.env.CHROME_PATH || undefined,viewport:{width:390,height:844},acceptDownloads:true});
+  await context.setOffline(true);
+  // Simulated future date checks that records have no app-level expiry.
+  await context.addInitScript(() => {
+    const RealDate=Date;
+    const future=RealDate.now()+400*24*60*60*1000;
+    window.Date=class extends RealDate { constructor(...args) { super(...(args.length ? args : [future])); } static now() { return future; } };
+  });
   page = context.pages()[0] || await context.newPage();
   await page.goto(url+'#home');
   await page.locator('.subject-card').first().click();
   await page.evaluate(() => window.scrollTo(0,0));
   await page.screenshot({path:path.join(profile,'mobile-subject.png'),fullPage:true});
-  assert.equal(await page.locator(`.lecture-check[data-lecture-id="${lectureId}"]`).isChecked(),false);
+  assert.equal(await page.locator('.lecture-check:checked').count(),durableChecks);
+  assert.equal(await page.locator(`.lecture-check[data-lecture-id="${lectureId}"]`).isChecked(),true);
   assert.deepEqual(errors,[]);
-  console.log('Browser UI, merge reversals, safety restore, persistence across browser restart, export, replace, offline toggles, and mobile width passed.');
+  console.log('Passed: UI, backups, merge reversals, safety restore, concurrent tabs, rapid checkmarks, failed-save rollback, stale-import protection, offline browser restart, simulated 400-day retention, and mobile width.');
   console.log('Screenshots:',path.join(profile,'desktop.png'),path.join(profile,'mobile.png'),path.join(profile,'mobile-subject.png'));
 } finally {
   if (context) await context.close();
