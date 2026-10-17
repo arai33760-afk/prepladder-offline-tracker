@@ -11,6 +11,16 @@ export function percent(part, whole) { return whole ? (part / whole) * 100 : 0; 
 export function isCompleted(lecture, progress) {
   return progress[lecture.id]?.completed ?? Boolean(lecture.initialCompleted);
 }
+export function applyManualStart(state) {
+  if (state.manualStartApplied) return state;
+  const progress = { ...state.progress };
+  for (const lecture of state.lectures) {
+    if (lecture.initialCompleted && !progress[lecture.id]) {
+      progress[lecture.id] = { completed: false, updatedAt: '1970-01-01T00:00:00.000Z', changeId: 'manual-start-v1', completedAt: null };
+    }
+  }
+  return { ...state, progress, manualStartApplied: true };
+}
 export function createInitialState(seed) {
   const state = {
     schemaVersion: SCHEMA_VERSION,
@@ -23,7 +33,7 @@ export function createInitialState(seed) {
     createdAt: new Date().toISOString()
   };
   validateState(state);
-  return state;
+  return applyManualStart(state);
 }
 export function stats(state, subjectId = null) {
   let totalSeconds = 0, completedSeconds = 0, totalLectures = 0, completedLectures = 0, unknownDurations = 0;
@@ -68,6 +78,7 @@ const validString = (v, max = 2000) => typeof v === 'string' && v.length > 0 && 
 const validIso = v => typeof v === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(v) && !Number.isNaN(Date.parse(v));
 export function validateState(state) {
   assert(state && typeof state === 'object' && !Array.isArray(state), 'Invalid application data.');
+  assert(state.manualStartApplied === undefined || typeof state.manualStartApplied === 'boolean', 'Invalid starting-progress policy.');
   assert(state.schemaVersion === SCHEMA_VERSION, 'Unsupported data schema version.');
   assert(validString(state.courseId, 200), 'Missing course identity.');
   assert(Array.isArray(state.subjects) && state.subjects.length > 0 && state.subjects.length <= 500, 'Invalid subjects.');

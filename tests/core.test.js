@@ -1,12 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createInitialState, durationLabel, importPreview, isCompleted, mergeStates, setLectureCompletion, stats, validateState } from '../src/core.js';
+import { applyManualStart, createInitialState, durationLabel, importPreview, isCompleted, mergeStates, setLectureCompletion, stats, validateState } from '../src/core.js';
 import { createBackup, parseBackup } from '../src/backup.js';
 
 const seed = JSON.parse(await readFile(new URL('../src/seed.json', import.meta.url), 'utf8'));
 const fresh = () => createInitialState(seed);
 const plain = object => structuredClone(object);
+
+test('existing installs lose only preset checks, keep manual edits, and merge real changes', async () => {
+  const legacy = { ...fresh(), progress: {} };
+  delete legacy.manualStartApplied;
+  assert.equal(stats(legacy).completedLectures, 59);
+  const legacyBackup = await createBackup(legacy);
+  assert.equal(stats((await parseBackup(JSON.stringify(legacyBackup))).state).completedLectures, 59);
+  const preset = legacy.lectures.find(l => l.initialCompleted);
+  const manual = legacy.lectures.find(l => !l.initialCompleted);
+  const edited = setLectureCompletion(legacy, manual.id, true, '2026-10-17T09:00:00.000Z', 'manual');
+  const migrated = applyManualStart(edited);
+  assert.equal(stats(migrated).completedLectures, 1);
+  assert.deepEqual(migrated.progress[manual.id], edited.progress[manual.id]);
+  assert.equal(applyManualStart(migrated), migrated);
+  const remote = setLectureCompletion(fresh(), preset.id, true, '2026-10-17T08:00:00.000Z', 'remote-manual');
+  assert.equal(isCompleted(preset, mergeStates(migrated, remote).progress), true);
+});
 
 test('workbook extraction is complete and the nine supplied durations are included', () => {
   const s = fresh(); const totals = stats(s);
@@ -17,8 +34,10 @@ test('workbook extraction is complete and the nine supplied durations are includ
   assert.equal(s.lectures.filter(l=>l.durationSeconds===null).length, 0);
   assert.equal(totals.totalSeconds, 2_151_600);
   assert.equal(durationLabel(totals.totalSeconds), '597h 40m');
-  assert.equal(totals.completedLectures, 59);
-  assert.equal(totals.remainingLectures, 666);
+  assert.equal(totals.completedLectures, 0);
+  assert.equal(totals.completedSeconds, 0);
+  assert.equal(totals.remainingLectures, 725);
+  assert.equal(totals.remainingSeconds, totals.totalSeconds);
   assert.equal(s.subjects.reduce((n,subject)=>n+stats(s,subject.id).totalLectures,0),725);
   assert.equal(s.subjects.reduce((n,subject)=>n+stats(s,subject.id).totalSeconds,0),2_151_600);
 });
@@ -40,7 +59,7 @@ test('backup round trip includes all data and rejects edits', async () => {
   const s=fresh(); const backup=await createBackup(s,'2026-10-17T10:00:00.000Z');
   assert.equal(backup.state.lectures.length,725);
   assert.equal(backup.lectureStatus.length,725);
-  assert.equal(backup.lectureStatus.filter(x=>x.completed).length,59);
+  assert.equal(backup.lectureStatus.filter(x=>x.completed).length,0);
   assert.deepEqual((await parseBackup(JSON.stringify(backup))).state,s);
   const damaged=plain(backup); damaged.state.lectures[0].title='changed';
   await assert.rejects(parseBackup(JSON.stringify(damaged)),/checksum mismatch/i);
@@ -50,7 +69,8 @@ test('backup round trip includes all data and rejects edits', async () => {
 });
 
 test('merge honors later unchecking, does not just union completed flags', () => {
-  const base=fresh(); const lecture=base.lectures.find(l=>l.initialCompleted);
+  const initial=fresh(); const lecture=initial.lectures.find(l=>l.initialCompleted);
+  const base=setLectureCompletion(initial,lecture.id,true,'2026-10-17T09:00:00.000Z','first-manual-check');
   const local=setLectureCompletion(base,lecture.id,false,'2026-10-17T12:00:00.000Z','local-1');
   const remote=setLectureCompletion(base,lecture.id,false,'2026-10-17T11:00:00.000Z','remote-1');
   const remoteAgain=setLectureCompletion(remote,lecture.id,true,'2026-10-17T11:30:00.000Z','remote-2');

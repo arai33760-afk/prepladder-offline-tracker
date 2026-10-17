@@ -1,8 +1,8 @@
 # Source data audit
 
-Primary source: `PrepLadder_Subject_Checklist.xlsx`, 11 worksheets. All 725 non-header lecture rows have a title, unique stable lecture ID, subject, workbook order, and duration. There is no chapter column in the source. Workbook checkmarks initialize 59 Internal Medicine lectures as completed. The source workbook was read only and not modified.
+Primary source: `PrepLadder_Subject_Checklist.xlsx`, 11 worksheets. All 725 non-header lecture rows have a title, unique stable lecture ID, subject, workbook order, and duration. There is no chapter column in the source. The workbook contains 59 checked Internal Medicine lectures. These are retained only as source metadata; the app starts with all lectures unchecked. The source workbook was read only and not modified.
 
-| Subject | Lectures | Total duration | Initially completed |
+| Subject | Lectures | Total duration | Checked in source workbook |
 |---|---:|---:|---:|
 | Forensic Medicine | 36 | 28h 16m | 0 |
 | Internal Medicine | 141 | 111h 41m | 59 |
@@ -33,4 +33,4 @@ Nine blank workbook duration cells were filled from the user-supplied table in t
 
 Source duration cells were Excel `[h]:mm` time values. They were converted exactly to integer seconds. The nine supplemental values add 6h 11m. There are no unresolved durations. Identifiers are derived from source sheet, row, and title; repeated titles in different places do not share an ID.
 
-Initial dashboard values: **551h 34m remaining**, **46h 06m completed**, **597h 40m total**, **59 completed lectures**, and **666 remaining lectures**. Primary duration-based completion is about **7.7%**; lecture-count completion is about **8.1%**.
+Initial dashboard values: **597h 40m remaining**, **0h 00m completed**, **597h 40m total**, **0 completed lectures**, and **725 remaining lectures**. Both completion percentages start at **0%**.

@@ -1,6 +1,6 @@
 # Install PrepLadder Offline Tracker
 
-After GitHub Pages finishes publishing, open **https://arai33760-afk.github.io/prepladder-offline-tracker/**. Keep this same address on both devices. The app starts with the 59 lectures already checked in the supplied workbook. Progress you later make on one device stays on that device until you transfer a JSON backup.
+After GitHub Pages finishes publishing, open **https://arai33760-afk.github.io/prepladder-offline-tracker/**. Keep this same address on both devices. The app starts with every lecture unchecked and 0% completed. Progress you later make on one device stays on that device until you transfer a JSON backup.
 
 ## Android with Chrome
 

@@ -20,7 +20,7 @@ const server = createServer(async (req,res) => {
   } catch { res.writeHead(404); res.end('Not found'); }
 });
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
-const url = `http://127.0.0.1:${server.address().port}/`;
+const url = process.env.TEST_URL || `http://127.0.0.1:${server.address().port}/`;
 const profile = await mkdtemp(path.join(os.tmpdir(),'prepladder-browser-'));
 let context;
 try {
@@ -29,6 +29,32 @@ try {
   const errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(url);
+  await page.locator('.subject-card').first().waitFor();
+  assert.equal(await page.locator('.hero-number').innerText(), '597h 40m');
+  await page.evaluate(async () => {
+    const core = await import('./core.js');
+    const storage = await import('./storage.js');
+    const db = await storage.openDatabase();
+    const legacy = { ...await storage.readState(db), progress: {} };
+    delete legacy.manualStartApplied;
+    const lecture = legacy.lectures.find(item => !item.initialCompleted);
+    await storage.writeState(db, core.setLectureCompletion(legacy, lecture.id, true));
+    db.close();
+  });
+  await page.reload();
+  await page.locator('.subject-card').first().waitFor();
+  const migration = await page.evaluate(async () => {
+    const core = await import('./core.js');
+    const storage = await import('./storage.js');
+    const db = await storage.openDatabase();
+    const saved = await storage.readState(db);
+    const result = { completed: core.stats(saved).completedLectures, safety: (await storage.listSafetySnapshots(db)).length };
+    await storage.writeState(db, core.createInitialState(await (await fetch('./seed.json')).json()));
+    db.close();
+    return result;
+  });
+  assert.deepEqual(migration, { completed: 1, safety: 1 });
+  await page.reload();
   await page.locator('.subject-card').first().waitFor();
   assert.equal(await page.locator('.subject-card').count(),11);
   assert.match(await page.locator('.hero-number').innerText(),/h \d\dm/);
@@ -66,6 +92,7 @@ try {
   await download.saveAs(backupFile);
   const backup=JSON.parse(await readFile(backupFile,'utf8'));
   assert.equal(backup.state.lectures.length,725);
+  assert.equal(backup.lectureStatus.filter(item => item.completed).length,1);
   assert.equal(backup.state.progress[lectureId].completed,true);
   await page.locator('.top-nav a[href="#home"]').click();
   await page.locator('.subject-card').first().click();

@@ -1,6 +1,6 @@
 # PrepLadder Lecture Tracker
 
-A complete offline-first lecture checklist for the supplied PrepLadder workbook. The app contains **725 lectures in 11 subjects**, totaling **597h 40m**. It starts with the workbook's **59 checked lectures** (46h 06m completed). The nine missing durations were filled from the user's supplied table. See [DATA_AUDIT.md](DATA_AUDIT.md).
+A complete offline-first lecture checklist for the supplied PrepLadder workbook. The app contains **725 lectures in 11 subjects**, totaling **597h 40m**. Every lecture starts unchecked: **0 completed**, **725 remaining**, and **597h 40m remaining**. The nine missing durations were filled from the user's supplied table. See [DATA_AUDIT.md](DATA_AUDIT.md).
 
 ## Use it
 
@@ -28,7 +28,7 @@ The installable PWA needs an HTTPS address (or localhost for testing). The free,
 
 Official setup reference: [GitHub Pages publishing source](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site). HTTPS or localhost is required for PWA installation: [MDN installability guide](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
 
-GitHub Pages serves the static application files. The site contains the lecture titles, durations, and original 59 checked flags, so those seed details are public if you choose a public host. **Later progress and backups stay on your devices** unless you explicitly share a backup. Never upload exported backup JSON files to the repository.
+GitHub Pages serves the static application files. The site contains the lecture titles, durations, and original workbook checkmarks as source metadata, so those seed details are public if you choose a public host. **Later progress and backups stay on your devices** unless you explicitly share a backup. Never upload exported backup JSON files to the repository.
 
 ### Android Chrome
 
@@ -73,3 +73,5 @@ There is no chapter column or chapter heading structure in the workbook, so lect
 ## Updates
 
 Back up progress before publishing an update. Keep the same HTTPS URL and course/lecture IDs. A new service worker cache is created by the build. The app does not overwrite existing IndexedDB data with a changed seed, so edits to the course dataset require a planned data migration or a reviewed backup replacement.
+
+The clean-start update removes only inherited workbook checkmarks on existing installs, saves a safety snapshot first, and keeps all explicit user changes. Default unchecked records use an epoch timestamp so they cannot override real study progress during merges. A deliberately imported or restored backup retains its recorded statuses.

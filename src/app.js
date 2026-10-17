@@ -1,4 +1,4 @@
-import { createInitialState, durationLabel, importPreview, isCompleted, mergeStates, percent, setLectureCompletion, stats, validateState } from './core.js';
+import { applyManualStart, createInitialState, durationLabel, importPreview, isCompleted, mergeStates, percent, setLectureCompletion, stats, validateState } from './core.js';
 import { openDatabase, readState, writeState, installInitialState, importWithSafety, listSafetySnapshots, requestPersistentStorage } from './storage.js';
 import { createBackup, downloadBackup, parseBackup } from './backup.js';
 
@@ -71,7 +71,7 @@ function renderHome() {
   <section class="daily-panel"><div><div class="eyebrow">TODAY</div><h2>${todayItems.length} lectures · ${durationLabel(todaySeconds)}</h2><p>Completed today on this device or imported with timestamps.</p></div><div class="goal-box"><label for="daily-goal">Daily lecture goal</label><div><input id="daily-goal" type="number" min="0.25" max="24" step="0.25" value="${state.settings.dailyGoalHours}"><span>hours / day</span></div><small>About ${num(days)} study days remaining at this goal</small></div></section>
   <section class="subjects-section"><div class="section-heading"><div><div class="eyebrow">SUBJECTS</div><h2>Study by subject</h2><p>${state.subjects.length} subjects from your workbook</p></div><label class="sort-label">Sort by <select id="subject-sort"><option value="source" ${subjectSort==='source'?'selected':''}>Workbook order</option><option value="alphabetical" ${subjectSort==='alphabetical'?'selected':''}>A–Z</option><option value="progress" ${subjectSort==='progress'?'selected':''}>Lowest progress</option><option value="remaining" ${subjectSort==='remaining'?'selected':''}>Most hours remaining</option></select></label></div><div class="subject-grid">${subjectCards()}</div></section>
   ${recent.length ? `<section class="recent-section"><div class="section-heading"><div><div class="eyebrow">RECENT ACTIVITY</div><h2>Recently completed</h2></div></div><div class="recent-list">${recent.map(([id,p]) => { const l=lectureById.get(id); if (!l) return ''; const s=state.subjects.find(x=>x.id===l.subjectId); return `<div><span><strong>${escape(l.title)}</strong><small>${escape(s?.name || '')}</small></span><span>${durationLabel(l.durationSeconds)}<small>${when(p.completedAt)}</small></span></div>`; }).join('')}</div></section>` : ''}
-  <div class="source-note">Source: ${escape('PrepLadder_Subject_Checklist.xlsx')} plus nine durations you provided. The workbook had ${state.lectures.filter(l=>l.initialCompleted).length} lectures already checked when imported.</div>`;
+  <div class="source-note">Source: ${escape('PrepLadder_Subject_Checklist.xlsx')} plus nine supplied durations. Every lecture starts unchecked. Mark your own progress as you study.</div>`;
 }
 function lectureRow(l) {
   const done = isCompleted(l, state.progress);
@@ -141,7 +141,7 @@ async function importSelected(mode) {
   if (mode === 'replace' && !confirm('Replace all current course data and progress with this backup? A safety backup will be saved and downloaded first.')) return;
   busy = true;
   try {
-    const next = mode === 'merge' ? mergeStates(state, pendingBackup.state) : pendingBackup.state;
+    const next = mode === 'merge' ? mergeStates(state, pendingBackup.state) : { ...pendingBackup.state, manualStartApplied: true };
     validateState(next);
     const safety = await createBackup(state);
     downloadBackup(safety, 'PrepLadder_Safety_Before_Import');
@@ -158,7 +158,7 @@ async function restoreSafety(id) {
   if (!snapshot || busy || !confirm(`Restore the safety snapshot from ${when(snapshot.createdAt)}? Your current data will be saved first.`)) return;
   busy = true;
   try {
-    const restored = (await parseBackup(JSON.stringify(snapshot.backup))).state;
+    const restored = { ...(await parseBackup(JSON.stringify(snapshot.backup))).state, manualStartApplied: true };
     const safety = await createBackup(state);
     downloadBackup(safety, 'PrepLadder_Safety_Before_Restore');
     await importWithSafety(db, restored, safety, 'Before safety restore');
@@ -238,6 +238,11 @@ async function start() {
     db = await openDatabase();
     state = await readState(db);
     if (!state) state = await installInitialState(db, createInitialState(seed));
+    const manualState = applyManualStart(state);
+    if (manualState !== state) {
+      await importWithSafety(db, manualState, await createBackup(state), 'Before removing preset workbook checkmarks');
+      state = manualState;
+    }
     safetySnapshots = await listSafetySnapshots(db);
     render();
     requestPersistentStorage().catch(() => {});

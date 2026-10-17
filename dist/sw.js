@@ -1,4 +1,4 @@
-const CACHE_NAME = 'prepladder-21579fc2e6157006';
+const CACHE_NAME = 'prepladder-5f89a3334b6e460d';
 const FILES = ['.', './index.html', './styles.css', './app.js', './core.js', './storage.js', './backup.js', './seed.json', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));
