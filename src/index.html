@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101c2c">
+  <meta name="description" content="Your offline PrepLadder lecture progress and remaining study hours.">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon-192.png" type="image/png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>PrepLadder Lecture Tracker</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="#home" aria-label="PrepLadder Tracker home"><span class="brand-mark" aria-hidden="true">P<span>+</span></span><span>PrepLadder <strong>Tracker</strong></span></a>
+        <nav class="top-nav" aria-label="Main navigation">
+          <a href="#home" id="nav-home">Dashboard</a>
+          <a href="#backup" id="nav-backup">Backup & transfer</a>
+        </nav>
+        <div class="header-actions">
+          <span id="connection-status" class="connection-status" aria-live="polite"></span>
+          <button id="install-button" class="button button-outline install-button" type="button" hidden>Install app</button>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Toggle theme" title="Toggle theme">◐</button>
+        </div>
+      </div>
+    </header>
+    <main id="app" class="main-content" tabindex="-1"><div class="loading">Loading your lecture tracker…</div></main>
+    <footer class="site-footer">Progress is saved on this device. Export a backup to transfer it or keep a separate copy.</footer>
+  </div>
+  <input id="backup-file" type="file" accept=".json,application/json" hidden>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

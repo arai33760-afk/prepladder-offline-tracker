@@ -1,0 +1,87 @@
+{
+  "source": "PrepLadder_Subject_Checklist.xlsx",
+  "subjects": [
+    {
+      "subject": "Forensic Medicine",
+      "lectures": 36,
+      "knownHours": 28.27,
+      "unknown": 0,
+      "initialCompleted": 0
+    },
+    {
+      "subject": "Internal Medicine",
+      "lectures": 141,
+      "knownHours": 111.68,
+      "unknown": 0,
+      "initialCompleted": 59
+    },
+    {
+      "subject": "Surgery",
+      "lectures": 72,
+      "knownHours": 79.6,
+      "unknown": 0,
+      "initialCompleted": 0
+    },
+    {
+      "subject": "PSM",
+      "lectures": 119,
+      "knownHours": 65.62,
+      "unknown": 0,
+      "initialCompleted": 0
+    },
+    {
+      "subject": "Obstetrics & Gynaecology",
+      "lectures": 113,
+      "knownHours": 108.12,
+      "unknown": 0,
+      "initialCompleted": 0
+    },
+    {
+      "subject": "Pediatrics",
+      "lectures": 75,
+      "knownHours": 32.87,
+      "unknown": 0,
+      "initialCompleted": 0
+    },
+    {
+      "subject": "Psychiatry",
+      "lectures": 23,
+      "knownHours": 23.73,
+      "unknown": 0,
+      "initialCompleted": 0
+    },
+    {
+      "subject": "Dermatology",
+      "lectures": 31,
+      "knownHours": 28.72,
+      "unknown": 0,
+      "initialCompleted": 0
+    },
+    {
+      "subject": "Orthopedics",
+      "lectures": 21,
+      "knownHours": 27.63,
+      "unknown": 0,
+      "initialCompleted": 0
+    },
+    {
+      "subject": "ENT",
+      "lectures": 56,
+      "knownHours": 50.0,
+      "unknown": 0,
+      "initialCompleted": 0
+    },
+    {
+      "subject": "Ophthalmology",
+      "lectures": 38,
+      "knownHours": 41.43,
+      "unknown": 0,
+      "initialCompleted": 0
+    }
+  ],
+  "totalLectures": 725,
+  "knownSeconds": 2151600,
+  "unknownDurations": 0,
+  "initialCompleted": 59,
+  "issues": []
+}
